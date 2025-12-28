@@ -1,10 +1,6 @@
 import telebot
 from telebot import types
-from datetime import datetime
-import pytz
-
-# ================== TIMEZONE ==================
-ist = pytz.timezone("Asia/Kolkata")
+from datetime import datetime, timedelta, timezone
 
 # ================== BASIC CONFIG ==================
 BOT_TOKEN = "8524217876:AAGWFO2g0vBnWsFQnwO1IEns9ZxZ148gcAU"
@@ -16,6 +12,9 @@ WEBSITE_LINK = "https://shreekrishnaagency.github.io/Business/"
 CREATOR_FORM = "https://forms.gle/eQgnMQff64L98y1Q9"
 
 QR_FILE = "QR.png"
+
+# IST Timezone Setup (UTC + 5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
@@ -54,9 +53,8 @@ PROJECT_SERVICES = {
 
 user_selection = {}
 
-# ================== START / HELP ==================
-@bot.message_handler(commands=['start', 'help'])
-def start(message):
+# ================== START / HELP / MAIN MENU ==================
+def get_main_menu_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("💰 View Paid Services", callback_data="paid"),
@@ -65,12 +63,28 @@ def start(message):
         types.InlineKeyboardButton("🌐 Visit Website", url=WEBSITE_LINK),
         types.InlineKeyboardButton("📢 Join Telegram Channel", url=CHANNEL_LINK)
     )
+    return kb
+
+@bot.message_handler(commands=['start', 'help'])
+def start(message):
     bot.send_message(
         message.chat.id,
         "👋 *Welcome to Shree Krishna Influencer Marketing Agency*\n\n"
         "🚀 We help brands grow with real & trusted promotion services.\n\n"
         "👇 Choose an option below",
-        reply_markup=kb
+        reply_markup=get_main_menu_keyboard()
+    )
+
+# Callback handler for "Back to Main Menu"
+@bot.callback_query_handler(func=lambda call: call.data == "start")
+def start_callback(call):
+    bot.edit_message_text(
+        "👋 *Welcome to Shree Krishna Influencer Marketing Agency*\n\n"
+        "🚀 We help brands grow with real & trusted promotion services.\n\n"
+        "👇 Choose an option below",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=get_main_menu_keyboard()
     )
 
 # ================== PAID SERVICES ==================
@@ -79,7 +93,10 @@ def paid_platforms(call):
     kb = types.InlineKeyboardMarkup(row_width=2)
     for platform in PAID_SERVICES:
         kb.add(types.InlineKeyboardButton(platform, callback_data=f"plat_{platform}"))
+    
+    # Back button to Main Menu
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="start"))
+    
     bot.edit_message_text("📌 *Select a platform:*", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("plat_"))
@@ -91,7 +108,9 @@ def paid_services(call):
     for service, price in PAID_SERVICES[platform].items():
         kb.add(types.InlineKeyboardButton(f"{service} – {price}", callback_data=f"service_{platform}|{service}"))
 
+    # Back button to Platform Selection
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="paid"))
+    
     bot.edit_message_text(
         f"*{platform} Services*\nSelect a service:",
         call.message.chat.id,
@@ -110,8 +129,10 @@ def service_selected(call):
         types.InlineKeyboardButton("💳 Pay Now", callback_data=f"paynow_{platform}|{service}"),
         types.InlineKeyboardButton("⏳ Pay Later", callback_data=f"paylater_{platform}|{service}")
     )
+    
+    # Back button to Service List (Previous Step)
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data=f"plat_{platform}"))
-
+    
     bot.edit_message_text(f"You selected *{service}* on {platform}. How would you like to proceed?", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 # ================== PAYMENT ==================
@@ -145,6 +166,9 @@ def notify_admin(user, platform, service):
     else:
         username_link = f"@{username}"
 
+    # Using IST time
+    current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
+
     admin_text = (
         "🚨 *NEW PAID SERVICE REQUEST*\n\n"
         f"👤 Name: {user.first_name} {user.last_name or ''}\n"
@@ -152,7 +176,7 @@ def notify_admin(user, platform, service):
         f"🆔 User ID: {user.id}\n\n"
         f"📦 Platform: {platform}\n"
         f"📦 Service: {service}\n\n"
-        f"⏰ Time: {datetime.now(ist).strftime('%d-%m-%Y %I:%M %p')}"
+        f"⏰ Time (IST): {current_time_ist}"
     )
     bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
 
@@ -182,19 +206,24 @@ def projects(call):
     kb = types.InlineKeyboardMarkup(row_width=1)
     for project, tasks in PROJECT_SERVICES.items():
         kb.add(types.InlineKeyboardButton(project, callback_data=f"proj_{project}"))
+    
+    # Back button to Main Menu (updated to point to callback 'start')
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="start"))
+    
     bot.edit_message_text("🛠 *Select a project:*", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("proj_"))
 def project_selected(call):
     project = call.data.replace("proj_", "")
-    user = call.from_user
     tasks = PROJECT_SERVICES.get(project, [])
 
     kb = types.InlineKeyboardMarkup(row_width=1)
     for task in tasks:
         kb.add(types.InlineKeyboardButton(task, callback_data=f"task_{project}|{task}"))
+    
+    # Back button to Project Selection
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="projects"))
+    
     bot.edit_message_text(f"🛠 *{project} Details*:\nSelect task:", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("task_"))
@@ -210,6 +239,9 @@ def task_selected(call):
     else:
         username_link = f"@{username}"
 
+    # Using IST time
+    current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
+
     admin_text = (
         "🛠 *NEW PROJECT REQUEST*\n\n"
         f"👤 Name: {user.first_name} {user.last_name or ''}\n"
@@ -217,7 +249,7 @@ def task_selected(call):
         f"🆔 User ID: {user.id}\n\n"
         f"📌 Project: {project}\n"
         f"📌 Task: {task}\n"
-        f"⏰ Time: {datetime.now(ist).strftime('%d-%m-%Y %I:%M %p')}"
+        f"⏰ Time (IST): {current_time_ist}"
     )
     bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
     bot.send_message(call.message.chat.id, f"✅ You selected *{task}* from project *{project}*. Admin will contact you soon.", parse_mode="Markdown")
