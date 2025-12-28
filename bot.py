@@ -7,7 +7,7 @@ import pytz
 ist = pytz.timezone("Asia/Kolkata")
 
 # ================== BASIC CONFIG ==================
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "8524217876:AAGWFO2g0vBnWsFQnwO1IEns9ZxZ148gcAU"
 ADMIN_ID = 5265106993
 
 CHANNEL_LINK = "https://t.me/shreekrishnaIMA"
