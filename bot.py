@@ -4,7 +4,7 @@ from telebot import types
 
 # ====== BOT TOKEN ======
 BOT_TOKEN = "8524217876:AAEx5D24HSQMdGyG2fg9fuT7bDfeXi-fTXU"
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(8524217876:AAEx5D24HSQMdGyG2fg9fuT7bDfeXi-fTXU)
 
 # ====== ADMIN ID ======
 ADMIN_ID = 5265106993  # Aapka Telegram ID
