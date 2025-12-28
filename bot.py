@@ -1,164 +1,130 @@
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
-import qrcode
-from io import BytesIO
-
-# ---------------- CONFIG ----------------
-TOKEN = "8524217876:AAEx5D24HSQMdGyG2fg9fuT7bDfeXi-fTXU"
-ADMIN_USERNAME = "@krishnraj_3103"
-
-# ---------------- DEFAULT WELCOME MESSAGE ----------------
-WELCOME_MESSAGE = (
-    "👋 Hello! Welcome to Shree Krishna Influencer Marketing Agency Bot.\n\n"
-    "🌐 Visit our website: https://shreekrishnaagency.github.io/Business/\n\n"
-    "Please use the menu below to explore our services, projects, FAQ, contact info, and payment options."
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters
 )
 
-# ---------------- BUSINESS DETAILS ----------------
-about_text = (
-    "Shree Krishna Influencer Marketing Agency helps brands grow through verified creators "
-    "and provides result-oriented social media growth solutions."
-)
+# ================= CONFIG =================
+BOT_TOKEN = "8524217876:AAGWFO2g0vBnWsFQnwO1IEns9ZxZ148gcAU"
+ADMIN_ID = 5265106993
+# ==========================================
 
-services = {
-    "Instagram Services": [
-        "1,000 Views – ₹80",
-        "1,000 Followers – ₹200",
-        "1,000 Likes – ₹70",
-        "1,000 Story Views – ₹60",
-        "Reel Views Boost",
-        "Engagement Package (Likes + Views)"
-    ],
-    "YouTube Services": [
-        "1,000 Views – ₹150",
-        "1,000 Likes – ₹140",
-        "1,000 Subscribers – ₹2,580",
-        "Watch Time Boost",
-        "Video Promotion"
-    ],
-    "Telegram Services": [
-        "1,000 Channel Members – ₹200",
-        "10,000 Post Views – ₹100",
-        "1,000 Reactions – ₹100",
-        "Channel Growth Package"
-    ],
-    "Facebook Services": [
-        "1,000 Reels Views – ₹100",
-        "Page Likes + Followers (Combo) – ₹150",
-        "1,000 Page Followers – ₹100",
-        "1,000 Post Likes – ₹110"
-    ],
-    "Twitter / X Services": [
-        "1,000 Likes – ₹220"
+user_data_store = {}
+
+# /start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("💼 Our Services", callback_data="services")],
+        [InlineKeyboardButton("💳 Pay Now", callback_data="pay")]
     ]
-}
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
-projects = {
-    "Website & Subdomain Setup": [
-        "Custom Website Creation",
-        "Domain & Subdomain Setup",
-        "Fully Functional & Responsive"
-    ],
-    "Vlog Writing": [
-        "Engaging Content Writing",
-        "SEO Optimized Scripts",
-        "Creative Vlog Ideas"
-    ],
-    "Content Writing": [
-        "High-Quality Blog Posts",
-        "Website Articles & Captions",
-        "SEO Optimized Content"
-    ],
-    "Telegram Bot Creation": [
-        "Custom Telegram Bot Setup",
-        "Automation & Interaction",
-        "Admin Control Features"
-    ]
-}
+    await update.message.reply_text(
+        "🙏 Welcome!\n\n"
+        "Main *Shree Krishna Agency* ka helping bot hoon 🤖\n\n"
+        "Services dekhne ya payment karne ke liye niche option select kare 👇",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
 
-faq = {
-    "Do you offer refund?": "Yes ✅ 101% refund if work is not completed within given time.",
-    "Is engagement real?": "Yes, we provide real and high-quality engagement only.",
-    "How fast delivery?": "Mostly within 24–72 hours."
-}
+# Button click handler
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-contact_info = {
-    "Instagram": "https://www.instagram.com/shree.krishna.ima",
-    "Telegram": "https://t.me/shreekrishnaIMA",
-    "Email": "Influencers.shreekrishnaima@zohomail.in"
-}
+    if query.data == "services":
+        await query.message.reply_text(
+            "📌 *Our Services*\n\n"
+            "• Influencer Marketing\n"
+            "• Brand Promotion\n"
+            "• Social Media Growth\n\n"
+            "Payment ke liye *Pay Now* button dabaye 💳",
+            parse_mode="Markdown"
+        )
 
-# ---------------- FUNCTIONS ----------------
-def start(update: Update, context: CallbackContext):
+    elif query.data == "pay":
+        user_data_store[query.from_user.id] = {}
+
+        await query.message.reply_photo(
+            photo=open("QR.png", "rb"),
+            caption=(
+                "💳 *Payment QR Code*\n\n"
+                "Payment ke baad ye 3 cheeze bheje:\n\n"
+                "1️⃣ Amount\n"
+                "2️⃣ Paid From Name\n"
+                "3️⃣ Screenshot 📸"
+            ),
+            parse_mode="Markdown"
+        )
+
+# Text handler (Amount & Paid From Name)
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text
+
+    if user_id not in user_data_store:
+        return
+
+    data = user_data_store[user_id]
+
+    if "amount" not in data:
+        data["amount"] = text
+        await update.message.reply_text(
+            "✅ Amount noted.\n\nAb *Paid From Name* bheje.",
+            parse_mode="Markdown"
+        )
+
+    elif "paid_name" not in data:
+        data["paid_name"] = text
+        await update.message.reply_text(
+            "✅ Name noted.\n\nAb payment *screenshot* upload kare 📸",
+            parse_mode="Markdown"
+        )
+
+# Screenshot handler
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    keyboard = [["About Us", "Services"], ["Projects", "FAQ"], ["Contact", "Payment"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    
-    # Send default welcome message with website link
-    update.message.reply_text(WELCOME_MESSAGE, reply_markup=reply_markup)
+    photo = update.message.photo[-1]
 
-def generate_qr(data: str):
-    qr = qrcode.QRCode(box_size=10, border=4)
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    bio = BytesIO()
-    bio.name = 'payment.png'
-    img.save(bio, 'PNG')
-    bio.seek(0)
-    return bio
+    data = user_data_store.get(user.id, {})
 
-def handle_message(update: Update, context: CallbackContext):
-    text = update.message.text.lower()
+    admin_caption = (
+        "🔔 *NEW PAYMENT RECEIVED*\n\n"
+        f"👤 Name: {user.first_name}\n"
+        f"🔗 Username: @{user.username}\n"
+        f"🆔 User ID: {user.id}\n\n"
+        f"💰 Amount: {data.get('amount', 'Not given')}\n"
+        f"🏦 Paid From: {data.get('paid_name', 'Not given')}"
+    )
 
-    if text == "about us":
-        update.message.reply_text(about_text)
-    elif text == "services":
-        msg = ""
-        for key, items in services.items():
-            msg += f"*{key}*\n" + "\n".join([f"- {i}" for i in items]) + "\n\n"
-        update.message.reply_text(msg, parse_mode="Markdown")
-    elif text == "projects":
-        msg = ""
-        for key, items in projects.items():
-            msg += f"*{key}*\n" + "\n".join([f"- {i}" for i in items]) + "\n\n"
-        update.message.reply_text(msg, parse_mode="Markdown")
-    elif text == "faq":
-        msg = ""
-        for q, a in faq.items():
-            msg += f"*{q}*\n{a}\n\n"
-        update.message.reply_text(msg, parse_mode="Markdown")
-    elif text == "contact":
-        msg = "You can reach us here:\n"
-        msg += f"Instagram: {contact_info['Instagram']}\n"
-        msg += f"Telegram: {contact_info['Telegram']}\n"
-        msg += f"Email: {contact_info['Email']}"
-        update.message.reply_text(msg)
-    elif text == "payment":
-        upi_link = "upi://pay?pa=exampleupi@bank&pn=ShreeKrishnaAgency&am=100"
-        qr_image = generate_qr(upi_link)
-        update.message.reply_photo(qr_image, caption="Scan this QR to pay ₹100. After payment, send screenshot here.")
-    else:
-        update.message.reply_text("Sorry, I didn't understand that. Please use the menu buttons.")
+    await context.bot.send_photo(
+        chat_id=ADMIN_ID,
+        photo=photo.file_id,
+        caption=admin_caption,
+        parse_mode="Markdown"
+    )
 
-def payment_screenshot(update: Update, context: CallbackContext):
-    if update.message.photo:
-        context.bot.send_photo(chat_id=update.effective_chat.id, photo=update.message.photo[-1].file_id,
-                               caption=f"Payment screenshot from @{update.effective_user.username}")
-        update.message.reply_text("Screenshot received! Thank you.")
+    await update.message.reply_text(
+        "✅ Screenshot received!\n\n"
+        "Payment verify hone ke baad team aapse contact karegi 🙏"
+    )
 
-# ---------------- MAIN ----------------
+    user_data_store.pop(user.id, None)
+
+# Main function
 def main():
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(filters.PHOTO, payment_screenshot))
-    dp.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
-    updater.start_polling()
-    print("Bot is running...")
-    updater.idle()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
