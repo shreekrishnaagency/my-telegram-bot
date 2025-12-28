@@ -1,13 +1,13 @@
 import telebot
 from telebot import types
 from datetime import datetime, timedelta, timezone
-import threading  # Timer ke liye zaroori hai
+import threading
 
 # ================== BASIC CONFIG ==================
 BOT_TOKEN = "8524217876:AAGWFO2g0vBnWsFQnwO1IEns9ZxZ148gcAU"
 ADMIN_ID = 5265106993
 
-# ✅ USERNAME UPDATED HERE
+# ✅ USERNAME
 BOT_USERNAME = "SKIMA_Helper_bot" 
 
 CHANNEL_USERNAME = "@shreekrishnaIMA"
@@ -17,7 +17,7 @@ CREATOR_FORM = "https://forms.gle/eQgnMQff64L98y1Q9"
 
 QR_FILE = "QR.png"
 
-# IST Timezone Setup (UTC + 5:30)
+# IST Timezone Setup
 IST = timezone(timedelta(hours=5, minutes=30))
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
@@ -64,6 +64,8 @@ def get_main_menu_keyboard():
         types.InlineKeyboardButton("💰 View Paid Services", callback_data="paid"),
         types.InlineKeyboardButton("🛠 Projects", callback_data="projects"),
         types.InlineKeyboardButton("👤 Join as Creator", url=CREATOR_FORM),
+        # ✅ NEW BUTTON ADDED HERE
+        types.InlineKeyboardButton("👨‍💻 DM to Founder", url=f"tg://user?id={ADMIN_ID}"),
         types.InlineKeyboardButton("🌐 Visit Website", url=WEBSITE_LINK),
         types.InlineKeyboardButton("📢 Join Telegram Channel", url=CHANNEL_LINK)
     )
@@ -160,6 +162,10 @@ def notify_admin(user, platform, service):
 
 @bot.message_handler(content_types=['photo', 'document'])
 def payment_screenshot(message):
+    # Ignore if message is from Admin trying to post to channel
+    if message.chat.id == ADMIN_ID and message.caption and "/post" in message.caption:
+        return 
+
     user = message.from_user
     username = user.username
     username_link = f"@{username}" if username else f"[Click Here](tg://user?id={user.id})"
@@ -212,6 +218,27 @@ def task_selected(call):
     bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
     bot.send_message(call.message.chat.id, f"✅ You selected *{task}* from project *{project}*. Admin will contact you soon.", parse_mode="Markdown")
 
+# ================== ADMIN CHANNEL POSTING ==================
+@bot.message_handler(content_types=['photo', 'video', 'text'])
+def admin_post_to_channel(message):
+    if message.chat.id == ADMIN_ID:
+        caption = message.caption if message.caption else message.text
+        if caption and "/post" in caption:
+            try:
+                clean_caption = caption.replace("/post", "").strip()
+                bot.copy_message(
+                    chat_id=CHANNEL_USERNAME,
+                    from_chat_id=ADMIN_ID,
+                    message_id=message.message_id,
+                    caption=clean_caption,
+                    parse_mode="Markdown"
+                )
+                bot.reply_to(message, "✅ Successfully posted to Channel!")
+            except Exception as e:
+                bot.reply_to(message, f"❌ Failed to post: {e}")
+        else:
+            pass
+
 # ================== CHANNEL WELCOME (AUTO DELETE) ==================
 def delete_message_after_delay(chat_id, message_id):
     try:
@@ -224,16 +251,13 @@ def delete_message_after_delay(chat_id, message_id):
 def channel_welcome(message: types.ChatMemberUpdated):
     new_member = message.new_chat_member
     
-    # Check if user joined
     if new_member.status in ["member", "administrator", "creator"]:
         user_name = new_member.user.first_name
         chat_id = message.chat.id
         
-        # Fast Link using hardcoded Username
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton("🔥 Boost Your Growth Now", url=f"https://t.me/{BOT_USERNAME}?start=welcome"))
 
-        # Professional Message
         welcome_text = (
             f"🌟 *Welcome, {user_name}!* 🌟\n\n"
             "🚀 *Take Your Brand to the Next Level with Shree Krishna IMA!*\n\n"
@@ -246,7 +270,6 @@ def channel_welcome(message: types.ChatMemberUpdated):
         
         try:
             sent_msg = bot.send_message(chat_id, welcome_text, reply_markup=kb, parse_mode="Markdown")
-            # Start 60-second Timer to delete message
             threading.Timer(60, delete_message_after_delay, args=[chat_id, sent_msg.message_id]).start()
         except Exception as e:
             print(f"Error sending welcome message: {e}")
@@ -254,6 +277,8 @@ def channel_welcome(message: types.ChatMemberUpdated):
 # ================== AI FALLBACK ==================
 @bot.message_handler(func=lambda message: True)
 def default_response(message):
+    if message.chat.id == ADMIN_ID:
+        return
     text = (
         "Hello! I can help you with our services and projects.\n\n"
         "Use /start or /help to get business info.\n"
@@ -263,5 +288,5 @@ def default_response(message):
     bot.send_message(message.chat.id, text)
 
 # ================== RUN BOT ==================
-print("🤖 SKIMA_Helper_bot is running with Final Optimized Features...")
+print("🤖 SKIMA_Helper_bot is running with DM to Founder...")
 bot.infinity_polling(allowed_updates=['message', 'callback_query', 'chat_member'])
