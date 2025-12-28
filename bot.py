@@ -23,8 +23,9 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-# 🟢 GLOBAL STATUS VARIABLE
+# 🟢 STATUS VARIABLES
 IS_ADMIN_ONLINE = True
+PENDING_REQUESTS = set()  # Ye set un users ko yaad rakhega jo offline me aaye the
 
 # ================== BUSINESS DATA ==================
 PAID_SERVICES = {
@@ -101,37 +102,84 @@ def start_callback(call):
         reply_markup=get_main_menu_keyboard()
     )
 
-# ================== ONLINE / OFFLINE MODE ==================
+# ================== ONLINE / OFFLINE MODE (WITH AUTO ALERT) ==================
 @bot.message_handler(commands=['online', 'offline'])
 def toggle_status(message):
     global IS_ADMIN_ONLINE
+    
     if message.chat.id == ADMIN_ID:
         if message.text == "/online":
             IS_ADMIN_ONLINE = True
-            bot.reply_to(message, "✅ **You are now ONLINE.** Users can contact you.")
+            bot.reply_to(message, "✅ **You are now ONLINE.**\nUsers can contact you.")
+            
+            # 🔔 Notify Pending Users
+            if PENDING_REQUESTS:
+                count = 0
+                for user_id in list(PENDING_REQUESTS):
+                    try:
+                        bot.send_message(
+                            user_id,
+                            "👋 **Good News!**\n\nFounder is now **ONLINE**. 🟢\nHe has received your request and will contact you shortly.",
+                            parse_mode="Markdown"
+                        )
+                        count += 1
+                    except:
+                        pass # Agar user ne block kiya ho toh ignore karein
+                
+                bot.send_message(ADMIN_ID, f"📢 **Alert Sent:** Notified {count} users that you are online.")
+                PENDING_REQUESTS.clear() # List khali kar do
+
         elif message.text == "/offline":
             IS_ADMIN_ONLINE = False
-            bot.reply_to(message, "😴 **You are now OFFLINE.** Bot will handle users.")
+            bot.reply_to(message, "😴 **You are now OFFLINE.**\nBot will collect requests for later.")
 
-# ================== TALK WITH FOUNDER ==================
+# ================== TALK WITH FOUNDER (UPDATED) ==================
 @bot.callback_query_handler(func=lambda call: call.data == "talk_founder")
 def talk_founder_handler(call):
     user = call.from_user
     chat_id = call.message.chat.id
-    
+    username_link = f"@{user.username}" if user.username else f"[Click Profile](tg://user?id={user.id})"
+    current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
+
     if IS_ADMIN_ONLINE:
-        bot.send_message(chat_id, "✅ **Request Sent!**\n\nAdmin has been notified. Please wait for a reply here.", parse_mode="Markdown")
+        # ✅ CASE 1: Admin Online Hai
+        bot.send_message(chat_id, "✅ **Request Sent!**\n\nFounder has been notified. Please wait for a reply here.", parse_mode="Markdown")
         
-        username_link = f"@{user.username}" if user.username else "No Username"
+        # Professional Link Format for Admin
         admin_text = (
-            "📞 *TALK REQUEST*\n\n"
-            f"👤 User: {user.first_name} ({username_link})\n"
-            f"🆔 User ID: `{user.id}`\n\n"
-            "💬 Copy ID and use `/reply ID Message`"
+            "📞 *NEW TALK REQUEST* 🟢\n\n"
+            f"👤 **Name:** {user.first_name} {user.last_name or ''}\n"
+            f"🔗 **Username:** {username_link}\n"
+            f"🆔 **User ID:** `{user.id}`\n"
+            f"⏰ **Time:** {current_time_ist}\n\n"
+            "💬 *Action:* Copy ID and use `/reply ID Message`"
         )
         bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
+        
     else:
-        bot.send_message(chat_id, "😴 **Admin is currently Offline/Sleeping.**\n\nPlease leave a message here or check back later.\nOur working hours are 10 AM - 10 PM.", parse_mode="Markdown")
+        # 😴 CASE 2: Admin Offline Hai
+        # Add User to Pending List
+        PENDING_REQUESTS.add(chat_id)
+        
+        bot.send_message(
+            chat_id, 
+            "😴 **Founder is currently Offline / Sleeping.**\n\n"
+            "✅ Your request has been saved.\n"
+            "🔔 You will be notified automatically when he comes online.", 
+            parse_mode="Markdown"
+        )
+
+        # Notify Admin about Missed Request (Professional Link Format)
+        admin_text = (
+            "🌙 *MISSED TALK REQUEST* (Offline)\n\n"
+            f"👤 **Name:** {user.first_name} {user.last_name or ''}\n"
+            f"🔗 **Username:** {username_link}\n"
+            f"🆔 **User ID:** `{user.id}`\n"
+            f"⏰ **Time:** {current_time_ist}\n\n"
+            "📌 *Note:* User has been added to waiting list.\n"
+            "👉 Type `/online` to notify them automatically."
+        )
+        bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
 
 # ================== CHECK ORDER STATUS ==================
 @bot.callback_query_handler(func=lambda call: call.data == "check_status")
@@ -147,7 +195,7 @@ def check_status_request(call):
 
 def process_status_inquiry(message):
     user = message.from_user
-    username_link = f"@{user.username}" if user.username else "No Username"
+    username_link = f"@{user.username}" if user.username else f"[Click Profile](tg://user?id={user.id})"
     
     bot.reply_to(message, "✅ **Request Sent!** Admin will update you shortly.")
 
@@ -222,44 +270,45 @@ def service_selected(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("app_") or call.data.startswith("rej_"))
 def handle_order_control(call):
     try:
-        # call.data format: "app_USERID_ORDERID"
         action, user_id_str, order_id = call.data.split("_")
         user_id = int(user_id_str)
         
         if action == "app":
-            # 1. Update Admin Message
             bot.edit_message_text(
                 f"✅ **ORDER APPROVED!**\n\nOrder ID: `{order_id}`\nUser ID: `{user_id}`\nStatus: Processing started.",
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="Markdown"
             )
-            # 2. Notify User
-            bot.send_message(
-                user_id,
-                f"🎉 **Order Update: APPROVED**\n\nYour Order **{order_id}** has been accepted!\nWork will start shortly.\nThank you for choosing SKIMA! 🚀",
-                parse_mode="Markdown"
-            )
+            try:
+                bot.send_message(
+                    user_id,
+                    f"🎉 **Order Update: APPROVED**\n\nYour Order **{order_id}** has been accepted!\nWork will start shortly.\nThank you for choosing SKIMA! 🚀",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
             
         elif action == "rej":
-            # 1. Update Admin Message
             bot.edit_message_text(
                 f"❌ **ORDER REJECTED!**\n\nOrder ID: `{order_id}`\nUser ID: `{user_id}`\nStatus: Cancelled.",
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode="Markdown"
             )
-            # 2. Notify User
-            bot.send_message(
-                user_id,
-                f"⚠️ **Order Update: REJECTED**\n\nYour Order **{order_id}** could not be processed.\nPossible reasons: Payment issue or Invalid link.\n\nPlease contact Admin via 'Talk with Founder'.",
-                parse_mode="Markdown"
-            )
+            try:
+                bot.send_message(
+                    user_id,
+                    f"⚠️ **Order Update: REJECTED**\n\nYour Order **{order_id}** could not be processed.\nPossible reasons: Payment issue or Invalid link.\n\nPlease contact Admin via 'Talk with Founder'.",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
             
     except Exception as e:
-        bot.send_message(ADMIN_ID, f"Error processing order: {e}")
+        print(f"Error processing order: {e}")
 
-# ================== PAYMENT (WITH ADMIN CONTROLS) ==================
+# ================== PAYMENT ==================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("paynow_"))
 def pay_now(call):
     _, data = call.data.split("_", 1)
@@ -299,10 +348,9 @@ def pay_later(call):
 
 def notify_admin_new_order(user, platform, service, order_id):
     username = user.username
-    username_link = f"@{username}" if username else f"[Click Here](tg://user?id={user.id})"
+    username_link = f"@{username}" if username else f"[Click Profile](tg://user?id={user.id})"
     current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
     
-    # ✅ Admin Buttons for Control
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{user.id}_{order_id}"),
@@ -327,7 +375,7 @@ def payment_screenshot(message):
     if message.chat.id == ADMIN_ID: return 
     
     user = message.from_user
-    username_link = f"@{user.username}" if user.username else f"[Click Here](tg://user?id={user.id})"
+    username_link = f"@{user.username}" if user.username else f"[Click Profile](tg://user?id={user.id})"
     admin_text = (
         "📸 *Payment Screenshot Received*\n\n"
         f"👤 Name: {user.first_name} {user.last_name or ''}\n"
@@ -366,7 +414,6 @@ def task_selected(call):
     current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
     order_id = generate_order_id()
     
-    # ✅ Admin Buttons for Projects too
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{user.id}_{order_id}"),
@@ -438,5 +485,5 @@ def default_response(message):
     bot.send_message(message.chat.id, text)
 
 # ================== RUN BOT ==================
-print("🤖 SKIMA_Helper_bot is running with Order Approval System...")
+print("🤖 SKIMA_Helper_bot is running with Smart Alert System...")
 bot.infinity_polling(allowed_updates=['message', 'callback_query', 'chat_member'])
