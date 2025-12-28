@@ -1,6 +1,6 @@
 import telebot
 from telebot import types
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ================== BASIC CONFIG ==================
 BOT_TOKEN = "8524217876:AAGWFO2g0vBnWsFQnwO1IEns9ZxZ148gcAU"
@@ -49,6 +49,10 @@ PROJECT_SERVICES = {
 }
 
 user_selection = {}
+
+# ================== HELPER FUNCTION FOR IST ==================
+def get_ist_time():
+    return datetime.utcnow() + timedelta(hours=5, minutes=30)
 
 # ================== START / HELP ==================
 @bot.message_handler(commands=['start', 'help'])
@@ -145,7 +149,7 @@ def notify_admin(user, platform, service):
         f"🆔 User ID: {user.id}\n\n"
         f"📦 Platform: {platform}\n"
         f"📦 Service: {service}\n\n"
-        f"⏰ Time: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}"
+        f"⏰ Time: {get_ist_time().strftime('%d-%m-%Y %I:%M %p')}"
     )
     bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
 
@@ -210,7 +214,7 @@ def task_selected(call):
         f"🆔 User ID: {user.id}\n\n"
         f"📌 Project: {project}\n"
         f"📌 Task: {task}\n"
-        f"⏰ Time: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}"
+        f"⏰ Time: {get_ist_time().strftime('%d-%m-%Y %I:%M %p')}"
     )
     bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
     bot.send_message(call.message.chat.id, f"✅ You selected *{task}* from project *{project}*. Admin will contact you soon.", parse_mode="Markdown")
