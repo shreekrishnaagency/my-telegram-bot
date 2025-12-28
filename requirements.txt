@@ -1,3 +1,1 @@
-python-telegram-bot==20.3
-qrcode
-Pillow
+pyTelegramBotAPI==4.14.0
