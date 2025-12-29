@@ -3,21 +3,24 @@ from telebot import types
 from datetime import datetime, timedelta, timezone
 import threading
 import random
-import re  # ✅ IMPORT ADDED: Text safayi ke liye zaroori hai
+import re  # ✅ TEXT CLEANING KE LIYE ZAROORI HAI
 
 # ================== BASIC CONFIG ==================
+# ⚠️ Apna Bot Token yahan dalein
 BOT_TOKEN = "8524217876:AAGWFO2g0vBnWsFQnwO1IEns9ZxZ148gcAU"
-ADMIN_ID = 5265106993
 
-# ✅ USERNAME
+# ⚠️ Apna Telegram ID yahan dalein (Varna bot command accept nahi karega)
+ADMIN_ID = 5265106993  
+
+# ✅ USERNAME & LINKS
 BOT_USERNAME = "SKIMA_Helper_bot" 
-
 CHANNEL_USERNAME = "@shreekrishnaIMA"
 CHANNEL_LINK = "https://t.me/shreekrishnaIMA"
 WEBSITE_LINK = "https://shreekrishnaagency.github.io/Business/"
 CREATOR_FORM = "https://forms.gle/eQgnMQff64L98y1Q9"
 
-QR_FILE = "QR.png"
+# ⚠️ Ensure karein ki ye file same folder me ho
+QR_FILE = "QR.png" 
 
 # IST Timezone Setup
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -67,7 +70,7 @@ user_selection = {}
 def generate_order_id():
     return f"SK-{random.randint(100000, 999999)}"
 
-# ================== START / HELP / MAIN MENU ==================
+# ================== MAIN MENU ==================
 def get_main_menu_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
@@ -102,25 +105,19 @@ def start_callback(call):
         reply_markup=get_main_menu_keyboard()
     )
 
-# ================== ONLINE / OFFLINE MODE ==================
+# ================== ONLINE / OFFLINE ==================
 @bot.message_handler(commands=['online', 'offline'])
 def toggle_status(message):
     global IS_ADMIN_ONLINE
-
     if message.chat.id == ADMIN_ID:
         if message.text == "/online":
             IS_ADMIN_ONLINE = True
-            bot.reply_to(message, "✅ **You are now ONLINE.**\nUsers can contact you.")
+            bot.reply_to(message, "✅ **You are now ONLINE.**")
             if PENDING_REQUESTS:
-                count = 0
                 for user_id in list(PENDING_REQUESTS):
-                    try:
-                        bot.send_message(user_id, "👋 **Good News!**\n\nFounder is now **ONLINE**. 🟢")
-                        count += 1
+                    try: bot.send_message(user_id, "👋 **Good News!**\nFounder is now **ONLINE**. 🟢")
                     except: pass
-                bot.send_message(ADMIN_ID, f"📢 Notified {count} users.")
                 PENDING_REQUESTS.clear()
-
         elif message.text == "/offline":
             IS_ADMIN_ONLINE = False
             bot.reply_to(message, "😴 **You are now OFFLINE.**")
@@ -139,9 +136,9 @@ def talk_founder_handler(call):
     else:
         PENDING_REQUESTS.add(chat_id)
         bot.send_message(chat_id, "😴 **Founder is Offline.** You will be notified when he is back.")
-        bot.send_message(ADMIN_ID, f"🌙 *MISSED REQUEST* (Offline)\n👤 {user.first_name}\n🆔 `{user.id}`")
+        bot.send_message(ADMIN_ID, f"🌙 *MISSED REQUEST*\n👤 {user.first_name}\n🆔 `{user.id}`")
 
-# ================== CHECK STATUS ==================
+# ================== CHECK STATUS & ADMIN REPLY ==================
 @bot.callback_query_handler(func=lambda call: call.data == "check_status")
 def check_status_request(call):
     msg = bot.send_message(call.message.chat.id, "🔎 Send Order ID or Screenshot.")
@@ -152,7 +149,6 @@ def process_status_inquiry(message):
     bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
     bot.send_message(ADMIN_ID, f"📩 *New Inquiry* from `{message.chat.id}`. Use `/reply ID message`.")
 
-# ================== ADMIN REPLY ==================
 @bot.message_handler(commands=['reply'])
 def admin_reply_to_user(message):
     if message.chat.id == ADMIN_ID:
@@ -164,7 +160,7 @@ def admin_reply_to_user(message):
         except:
             bot.reply_to(message, "⚠️ Format: `/reply UserID Message`")
 
-# ================== PAID SERVICES ==================
+# ================== PAID SERVICES & PROJECTS ==================
 @bot.callback_query_handler(func=lambda call: call.data == "paid")
 def paid_platforms(call):
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -194,7 +190,32 @@ def service_selected(call):
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data=f"plat_{platform}"))
     bot.edit_message_text(f"Selected: *{service}*", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
-# ================== PAYMENTS & ORDERS ==================
+@bot.callback_query_handler(func=lambda call: call.data == "projects")
+def projects(call):
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    for project in PROJECT_SERVICES:
+        kb.add(types.InlineKeyboardButton(project, callback_data=f"proj_{project}"))
+    kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="start"))
+    bot.edit_message_text("🛠 *Select a project:*", call.message.chat.id, call.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("proj_"))
+def project_selected(call):
+    project = call.data.replace("proj_", "")
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    for task in PROJECT_SERVICES[project]:
+        kb.add(types.InlineKeyboardButton(task, callback_data=f"task_{project}|{task}"))
+    kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="projects"))
+    bot.edit_message_text(f"🛠 *{project}*", call.message.chat.id, call.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("task_"))
+def task_selected(call):
+    data = call.data.replace("task_", "")
+    project, task = data.split("|")
+    order_id = generate_order_id()
+    bot.send_message(call.message.chat.id, f"✅ Request Sent! ID: `{order_id}`")
+    notify_admin(call.from_user, project, task, order_id)
+
+# ================== PAYMENTS & ORDER CONTROL ==================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("app_") or call.data.startswith("rej_"))
 def handle_order_control(call):
     action, user_id, order_id = call.data.split("_")
@@ -235,33 +256,7 @@ def payment_screenshot(message):
         bot.send_message(ADMIN_ID, f"📸 Screenshot from `{message.chat.id}`")
         bot.reply_to(message, "✅ Payment Screenshot Received!")
 
-# ================== PROJECTS ==================
-@bot.callback_query_handler(func=lambda call: call.data == "projects")
-def projects(call):
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    for project in PROJECT_SERVICES:
-        kb.add(types.InlineKeyboardButton(project, callback_data=f"proj_{project}"))
-    kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="start"))
-    bot.edit_message_text("🛠 *Select a project:*", call.message.chat.id, call.message.message_id, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("proj_"))
-def project_selected(call):
-    project = call.data.replace("proj_", "")
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    for task in PROJECT_SERVICES[project]:
-        kb.add(types.InlineKeyboardButton(task, callback_data=f"task_{project}|{task}"))
-    kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="projects"))
-    bot.edit_message_text(f"🛠 *{project}*", call.message.chat.id, call.message.message_id, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("task_"))
-def task_selected(call):
-    data = call.data.replace("task_", "")
-    project, task = data.split("|")
-    order_id = generate_order_id()
-    bot.send_message(call.message.chat.id, f"✅ Request Sent! ID: `{order_id}`")
-    notify_admin(call.from_user, project, task, order_id)
-
-# ================== CHANNEL WELCOME ==================
+# ================== WELCOME MESSAGE ==================
 def delete_message_after_delay(chat_id, message_id):
     try: bot.delete_message(chat_id, message_id)
     except: pass
@@ -276,19 +271,47 @@ def channel_welcome(message: types.ChatMemberUpdated):
             threading.Timer(60, delete_message_after_delay, args=[message.chat.id, sent.message_id]).start()
         except: pass
 
-# ================== ADMIN CHANNEL POSTING (FIXED A-Z) ==================
+# ================== SMART AI REPLY (FOR USERS) ==================
+@bot.message_handler(func=lambda message: message.text and message.chat.id != ADMIN_ID and not message.text.startswith("/"))
+def smart_user_reply(message):
+    text = message.text.lower()
+    
+    # 1. Greetings
+    if any(word in text for word in ['hi', 'hello', 'hey', 'namaste', 'hola', 'start']):
+        reply = "👋 **Namaste! Welcome to Shree Krishna Agency.**\n🚀 Hum aapki Social Media Growth me madad kar sakte hain.\n👇 Niche diye gaye button se shuru karein!"
+    
+    # 2. Price / Cost
+    elif any(word in text for word in ['price', 'rate', 'cost', 'paisa', 'kitna', 'charge']):
+        reply = "💰 **Best Rates!**\nInstagram, YouTube aur Telegram ke rates dekhne ke liye **'💰 View Paid Services'** button dabayein."
+
+    # 3. Help / Support
+    elif any(word in text for word in ['help', 'madad', 'support', 'problem', 'baat karni']):
+        reply = "🤝 **Help Center**\nFounder se baat karne ke liye Menu me **'🗣️ Talk With Founder'** option select karein."
+    
+    # 4. Status
+    elif any(word in text for word in ['status', 'order', 'kab hoga', 'check']):
+        reply = "🔎 **Order Status Check**\nApna status check karne ke liye Menu me **'🔎 Check Order Status'** dabayein."
+
+    # 5. Default
+    else:
+        reply = "🤖 **Main SKIMA Assistant hu.**\nMain aapki baat samajh nahi paya, lekin main growth me aapki madad kar sakta hu!\n👇 Niche Menu check karein."
+
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🚀 Open Main Menu", callback_data="start"))
+    
+    bot.send_chat_action(message.chat.id, 'typing')
+    bot.reply_to(message, reply, reply_markup=kb, parse_mode="Markdown")
+
+# ================== ADMIN CHANNEL POSTING (FIXED FOR MEDIA) ==================
 @bot.message_handler(content_types=['photo', 'video', 'text'])
 def admin_post_to_channel(message):
     # 1. Sirf Admin allow karega
     if message.chat.id != ADMIN_ID:
-        if message.text and not message.text.startswith("/"):
-             bot.send_message(message.chat.id, "Hello! Use /start to begin.")
         return
 
     # 2. Check agar ye '/post' command hai
     msg_content = message.caption if message.caption else message.text
     
-    # Ignore commands like /online, /reply etc.
     if message.text and message.text.startswith("/") and not message.text.lower().startswith("/post"):
         return
 
@@ -297,28 +320,29 @@ def admin_post_to_channel(message):
             # 3. Clean the text (Remove /post, /Post, /POST)
             clean_content = re.sub(r'(?i)/post', '', msg_content).strip()
 
-            # 4. Handle TEXT Messages (No Copy Message, Use Send Message)
+            # 4. Handle TEXT
             if message.content_type == 'text':
                 if clean_content:
                     bot.send_message(CHANNEL_USERNAME, clean_content, parse_mode="Markdown")
-                    bot.reply_to(message, "✅ Text successfully posted to Channel!")
+                    bot.reply_to(message, "✅ Text successfully posted!")
                 else:
-                    bot.reply_to(message, "⚠️ Empty message! Write something after /post.")
+                    bot.reply_to(message, "⚠️ Empty message!")
 
-            # 5. Handle MEDIA Messages (Use Copy Message + New Caption)
-            elif message.content_type in ['photo', 'video']:
-                bot.copy_message(
-                    chat_id=CHANNEL_USERNAME,
-                    from_chat_id=message.chat.id,
-                    message_id=message.message_id,
-                    caption=clean_content,
-                    parse_mode="Markdown"
-                )
-                bot.reply_to(message, "✅ Media successfully posted to Channel!")
+            # 5. Handle PHOTO (Direct Send - Safe from Markdown errors)
+            elif message.content_type == 'photo':
+                photo_id = message.photo[-1].file_id
+                bot.send_photo(CHANNEL_USERNAME, photo_id, caption=clean_content)
+                bot.reply_to(message, "✅ Photo successfully posted!")
+
+            # 6. Handle VIDEO (Direct Send)
+            elif message.content_type == 'video':
+                video_id = message.video.file_id
+                bot.send_video(CHANNEL_USERNAME, video_id, caption=clean_content)
+                bot.reply_to(message, "✅ Video successfully posted!")
 
         except Exception as e:
             bot.reply_to(message, f"❌ Failed to post: {e}")
 
 # ================== RUN BOT ==================
-print("🤖 SKIMA Bot is running...")
+print("🤖 SKIMA Bot is running with Smart AI & Fixed Posting...")
 bot.infinity_polling(allowed_updates=['message', 'callback_query', 'chat_member'])
