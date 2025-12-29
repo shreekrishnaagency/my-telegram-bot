@@ -81,33 +81,58 @@ def toggle_status(message):
             IS_ADMIN_ONLINE = False
             bot.reply_to(message, "😴 **You are now OFFLINE.**")
 
+# ✅ UPDATED REPLY COMMAND WITH NEW SHORTCUT (RECEIVED)
 @bot.message_handler(commands=['reply'])
 def admin_reply_to_user(message):
     if message.chat.id == ADMIN_ID:
         try:
+            # Command format: /reply UserID Message
             parts = message.text.split(maxsplit=2)
-            user_id, reply_text = parts[1], parts[2]
-            bot.send_message(user_id, f"👨‍💻 *Admin Support:*\n\n{reply_text}")
-            bot.reply_to(message, "✅ Sent!")
-        except:
-            bot.reply_to(message, "⚠️ Format: `/reply UserID Message`")
+            
+            if len(parts) < 3:
+                bot.reply_to(message, "⚠️ **Format:** `/reply UserID Message`\n\n💡 **Shortcuts:** complete, start, issue, received")
+                return
 
-# 🚨🚨 IMPORTANT: ADMIN POSTING FUNCTION KO YAHAN UPAR RAKHA HAI 🚨🚨
+            user_id = parts[1]
+            raw_text = parts[2] # Ye wo hai jo aapne type kiya
+
+            # 👇 SHORTCUTS DICTIONARY
+            SHORTCUTS = {
+                "complete": "✅ *Order Update: COMPLETED*\n\n🎉 Badhai ho! Aapka order successfully complete ho gaya hai.\nThank you for choosing Shree Krishna Agency! 🚀",
+                
+                "start": "🛠 *Order Update: STARTED*\n\n✅ Aapke order par kaam shuru ho gaya hai. Jald hi complete ho jayega.",
+                
+                "issue": "⚠️ *Order Update: ISSUE*\n\n❌ Aapke link ya order me kuch dikkat hai. Kripya 'Talk with Founder' option use karke sahi details bhejein.",
+                
+                # ✅ 4. Updated Message as requested
+                "received": "📩 *Update: REQUEST RECEIVED*\n\nWe received your request (This Message from Admin).\nThank you, we will connect you soon..."
+            }
+
+            # Check karein agar aapne koi Shortcut word likha hai
+            final_message = SHORTCUTS.get(raw_text.lower(), raw_text)
+
+            # Message Bhejein
+            bot.send_message(user_id, f"👨‍💻 *Admin Support:*\n\n{final_message}", parse_mode="Markdown")
+            
+            # Aapko confirm karein
+            bot.reply_to(message, f"✅ **Message Sent!**\n\nContent: {final_message}")
+
+        except Exception as e:
+            bot.reply_to(message, f"❌ Error: {e}")
+
 # ================== ADMIN CHANNEL POSTING (PRIORITY 1) ==================
-@bot.message_handler(content_types=['photo', 'video', 'text'])
+# Isme "func" add kiya hai taaki User ka Screenshot block na ho
+@bot.message_handler(func=lambda m: m.chat.id == ADMIN_ID, content_types=['photo', 'video', 'text'])
 def admin_post_to_channel(message):
-    # 1. Sirf Admin allow karega
-    if message.chat.id != ADMIN_ID:
-        return # Agar Admin nahi hai, to ye function yahi khatam, aur neeche wale functions check honge
-
-    # 2. Check agar ye '/post' command hai
+    
+    # Check agar ye '/post' command hai
     msg_content = message.caption if message.caption else message.text
     
     # Agar text message hai aur /post se start nahi hota, to ignore karo (taaki /reply wagera chale)
     if message.content_type == 'text' and message.text.startswith("/") and not message.text.lower().startswith("/post"):
         return
 
-    # 3. Main Logic
+    # Main Logic
     if msg_content and "/post" in msg_content.lower():
         try:
             clean_content = re.sub(r'(?i)/post', '', msg_content).strip()
@@ -121,7 +146,7 @@ def admin_post_to_channel(message):
 
             elif message.content_type == 'photo':
                 photo_id = message.photo[-1].file_id
-                # Caption khali ho to None bhejo, empty string nahi (Safety ke liye)
+                # Caption khali ho to None bhejo
                 cap = clean_content if clean_content else None
                 bot.send_photo(CHANNEL_USERNAME, photo_id, caption=cap)
                 bot.reply_to(message, "✅ Photo successfully posted!")
@@ -131,12 +156,9 @@ def admin_post_to_channel(message):
                 cap = clean_content if clean_content else None
                 bot.send_video(CHANNEL_USERNAME, video_id, caption=cap)
                 bot.reply_to(message, "✅ Video successfully posted!")
-            
-            return # Yahi rok do, aage mat jao
 
         except Exception as e:
             bot.reply_to(message, f"❌ Failed to post: {e}")
-            return
 
 # ================== TALK & STATUS ==================
 @bot.callback_query_handler(func=lambda call: call.data == "talk_founder")
@@ -252,7 +274,7 @@ def notify_admin(user, platform, service, order_id):
            types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{user.id}_{order_id}"))
     bot.send_message(ADMIN_ID, f"🚨 *NEW ORDER*\n👤 {user.first_name}\n📦 {service}\n🆔 `{order_id}`", reply_markup=kb)
 
-# 🚨🚨 SCREENSHOT HANDLER (AB YE POSTING KE NEECHE HAI) 🚨🚨
+# 🚨🚨 SCREENSHOT HANDLER 🚨🚨
 @bot.message_handler(content_types=['photo', 'document'])
 def payment_screenshot(message):
     # Agar Admin Post wala function upar handle nahi hua, to yahan aayega.
@@ -297,5 +319,5 @@ def smart_user_reply(message):
     bot.reply_to(message, reply, reply_markup=kb, parse_mode="Markdown")
 
 # ================== RUN BOT ==================
-print("🤖 SKIMA Bot is running (All Fixed)...")
+print("🤖 SKIMA Bot is running (All Fixed & Updated)...")
 bot.infinity_polling(allowed_updates=['message', 'callback_query', 'chat_member'])
