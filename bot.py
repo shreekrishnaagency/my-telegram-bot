@@ -2,7 +2,8 @@ import telebot
 from telebot import types
 from datetime import datetime, timedelta, timezone
 import threading
-import random 
+import random
+import re  # ✅ IMPORT ADDED: Text safayi ke liye zaroori hai
 
 # ================== BASIC CONFIG ==================
 BOT_TOKEN = "8524217876:AAGWFO2g0vBnWsFQnwO1IEns9ZxZ148gcAU"
@@ -25,7 +26,7 @@ bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
 # 🟢 STATUS VARIABLES
 IS_ADMIN_ONLINE = True
-PENDING_REQUESTS = set()  # Ye set un users ko yaad rakhega jo offline me aaye the
+PENDING_REQUESTS = set()
 
 # ================== BUSINESS DATA ==================
 PAID_SERVICES = {
@@ -64,7 +65,6 @@ user_selection = {}
 
 # ================== HELPER FUNCTIONS ==================
 def generate_order_id():
-    """Generates a random 6-digit Order ID starting with SK"""
     return f"SK-{random.randint(100000, 999999)}"
 
 # ================== START / HELP / MAIN MENU ==================
@@ -102,137 +102,67 @@ def start_callback(call):
         reply_markup=get_main_menu_keyboard()
     )
 
-# ================== ONLINE / OFFLINE MODE (WITH AUTO ALERT) ==================
+# ================== ONLINE / OFFLINE MODE ==================
 @bot.message_handler(commands=['online', 'offline'])
 def toggle_status(message):
     global IS_ADMIN_ONLINE
-    
+
     if message.chat.id == ADMIN_ID:
         if message.text == "/online":
             IS_ADMIN_ONLINE = True
             bot.reply_to(message, "✅ **You are now ONLINE.**\nUsers can contact you.")
-            
-            # 🔔 Notify Pending Users
             if PENDING_REQUESTS:
                 count = 0
                 for user_id in list(PENDING_REQUESTS):
                     try:
-                        bot.send_message(
-                            user_id,
-                            "👋 **Good News!**\n\nFounder is now **ONLINE**. 🟢\nHe has received your request and will contact you shortly.",
-                            parse_mode="Markdown"
-                        )
+                        bot.send_message(user_id, "👋 **Good News!**\n\nFounder is now **ONLINE**. 🟢")
                         count += 1
-                    except:
-                        pass # Agar user ne block kiya ho toh ignore karein
-                
-                bot.send_message(ADMIN_ID, f"📢 **Alert Sent:** Notified {count} users that you are online.")
-                PENDING_REQUESTS.clear() # List khali kar do
+                    except: pass
+                bot.send_message(ADMIN_ID, f"📢 Notified {count} users.")
+                PENDING_REQUESTS.clear()
 
         elif message.text == "/offline":
             IS_ADMIN_ONLINE = False
-            bot.reply_to(message, "😴 **You are now OFFLINE.**\nBot will collect requests for later.")
+            bot.reply_to(message, "😴 **You are now OFFLINE.**")
 
-# ================== TALK WITH FOUNDER (UPDATED) ==================
+# ================== TALK WITH FOUNDER ==================
 @bot.callback_query_handler(func=lambda call: call.data == "talk_founder")
 def talk_founder_handler(call):
     user = call.from_user
     chat_id = call.message.chat.id
-    username_link = f"@{user.username}" if user.username else f"[Click Profile](tg://user?id={user.id})"
     current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
 
     if IS_ADMIN_ONLINE:
-        # ✅ CASE 1: Admin Online Hai
-        bot.send_message(chat_id, "✅ **Request Sent!**\n\nFounder has been notified. Please wait for a reply here.", parse_mode="Markdown")
-        
-        # Professional Link Format for Admin
-        admin_text = (
-            "📞 *NEW TALK REQUEST* 🟢\n\n"
-            f"👤 **Name:** {user.first_name} {user.last_name or ''}\n"
-            f"🔗 **Username:** {username_link}\n"
-            f"🆔 **User ID:** `{user.id}`\n"
-            f"⏰ **Time:** {current_time_ist}\n\n"
-            "💬 *Action:* Copy ID and use `/reply ID Message`"
-        )
-        bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-        
+        bot.send_message(chat_id, "✅ **Request Sent!** Founder will reply shortly.")
+        admin_text = f"📞 *NEW TALK REQUEST*\n👤 {user.first_name}\n🆔 `{user.id}`\n⏰ {current_time_ist}"
+        bot.send_message(ADMIN_ID, admin_text)
     else:
-        # 😴 CASE 2: Admin Offline Hai
-        # Add User to Pending List
         PENDING_REQUESTS.add(chat_id)
-        
-        bot.send_message(
-            chat_id, 
-            "😴 **Founder is currently Offline / Sleeping.**\n\n"
-            "✅ Your request has been saved.\n"
-            "🔔 You will be notified automatically when he comes online.", 
-            parse_mode="Markdown"
-        )
+        bot.send_message(chat_id, "😴 **Founder is Offline.** You will be notified when he is back.")
+        bot.send_message(ADMIN_ID, f"🌙 *MISSED REQUEST* (Offline)\n👤 {user.first_name}\n🆔 `{user.id}`")
 
-        # Notify Admin about Missed Request (Professional Link Format)
-        admin_text = (
-            "🌙 *MISSED TALK REQUEST* (Offline)\n\n"
-            f"👤 **Name:** {user.first_name} {user.last_name or ''}\n"
-            f"🔗 **Username:** {username_link}\n"
-            f"🆔 **User ID:** `{user.id}`\n"
-            f"⏰ **Time:** {current_time_ist}\n\n"
-            "📌 *Note:* User has been added to waiting list.\n"
-            "👉 Type `/online` to notify them automatically."
-        )
-        bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-
-# ================== CHECK ORDER STATUS ==================
+# ================== CHECK STATUS ==================
 @bot.callback_query_handler(func=lambda call: call.data == "check_status")
 def check_status_request(call):
-    msg = bot.send_message(
-        call.message.chat.id, 
-        "🔎 *Check Order Status*\n\n"
-        "Please send your **Order ID** (e.g., SK-123456) or a Screenshot.\n"
-        "Admin will check and reply here.",
-        parse_mode="Markdown"
-    )
+    msg = bot.send_message(call.message.chat.id, "🔎 Send Order ID or Screenshot.")
     bot.register_next_step_handler(msg, process_status_inquiry)
 
 def process_status_inquiry(message):
-    user = message.from_user
-    username_link = f"@{user.username}" if user.username else f"[Click Profile](tg://user?id={user.id})"
-    
-    bot.reply_to(message, "✅ **Request Sent!** Admin will update you shortly.")
+    bot.reply_to(message, "✅ Admin will update you.")
+    bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
+    bot.send_message(ADMIN_ID, f"📩 *New Inquiry* from `{message.chat.id}`. Use `/reply ID message`.")
 
-    current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
-    admin_text = (
-        "📩 *NEW ORDER INQUIRY*\n\n"
-        f"👤 User: {user.first_name} ({username_link})\n"
-        f"🆔 User ID: `{message.chat.id}`\n"
-        f"⏰ Time: {current_time_ist}\n\n"
-        "👇 *Message Content Below:*"
-    )
-    bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-    
-    if message.content_type == 'text':
-        bot.send_message(ADMIN_ID, f"📝 *Message:* {message.text}", parse_mode="Markdown")
-    elif message.content_type == 'photo':
-        bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-        
-    bot.send_message(ADMIN_ID, f"💡 **To Reply:** `/reply {message.chat.id} Your Message`", parse_mode="Markdown")
-
-# ================== ADMIN REPLY SYSTEM ==================
+# ================== ADMIN REPLY ==================
 @bot.message_handler(commands=['reply'])
 def admin_reply_to_user(message):
     if message.chat.id == ADMIN_ID:
         try:
             parts = message.text.split(maxsplit=2)
-            if len(parts) < 3:
-                bot.reply_to(message, "⚠️ **Format:** `/reply UserID Message`")
-                return
-            
-            user_id = parts[1]
-            reply_text = parts[2]
-            
-            bot.send_message(user_id, f"👨‍💻 *Admin Support:*\n\n{reply_text}", parse_mode="Markdown")
-            bot.reply_to(message, "✅ Message sent to user!")
-        except Exception as e:
-            bot.reply_to(message, f"❌ Error: {e}")
+            user_id, reply_text = parts[1], parts[2]
+            bot.send_message(user_id, f"👨‍💻 *Admin Support:*\n\n{reply_text}")
+            bot.reply_to(message, "✅ Sent!")
+        except:
+            bot.reply_to(message, "⚠️ Format: `/reply UserID Message`")
 
 # ================== PAID SERVICES ==================
 @bot.callback_query_handler(func=lambda call: call.data == "paid")
@@ -251,7 +181,7 @@ def paid_services(call):
     for service, price in PAID_SERVICES[platform].items():
         kb.add(types.InlineKeyboardButton(f"{service} – {price}", callback_data=f"service_{platform}|{service}"))
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="paid"))
-    bot.edit_message_text(f"*{platform} Services*\nSelect a service:", call.message.chat.id, call.message.message_id, reply_markup=kb)
+    bot.edit_message_text(f"*{platform} Services*", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("service_"))
 def service_selected(call):
@@ -259,139 +189,57 @@ def service_selected(call):
     platform, service = data.split("|")
     user_selection[call.from_user.id]["service"] = service
     kb = types.InlineKeyboardMarkup()
-    kb.row(
-        types.InlineKeyboardButton("💳 Pay Now", callback_data=f"paynow_{platform}|{service}"),
-        types.InlineKeyboardButton("⏳ Pay Later", callback_data=f"paylater_{platform}|{service}")
-    )
+    kb.row(types.InlineKeyboardButton("💳 Pay Now", callback_data=f"paynow_{platform}|{service}"),
+           types.InlineKeyboardButton("⏳ Pay Later", callback_data=f"paylater_{platform}|{service}"))
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data=f"plat_{platform}"))
-    bot.edit_message_text(f"You selected *{service}* on {platform}. How would you like to proceed?", call.message.chat.id, call.message.message_id, reply_markup=kb)
+    bot.edit_message_text(f"Selected: *{service}*", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
-# ================== ADMIN APPROVE / REJECT HANDLER ==================
+# ================== PAYMENTS & ORDERS ==================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("app_") or call.data.startswith("rej_"))
 def handle_order_control(call):
-    try:
-        action, user_id_str, order_id = call.data.split("_")
-        user_id = int(user_id_str)
-        
-        if action == "app":
-            bot.edit_message_text(
-                f"✅ **ORDER APPROVED!**\n\nOrder ID: `{order_id}`\nUser ID: `{user_id}`\nStatus: Processing started.",
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode="Markdown"
-            )
-            try:
-                bot.send_message(
-                    user_id,
-                    f"🎉 **Order Update: APPROVED**\n\nYour Order **{order_id}** has been accepted!\nWork will start shortly.\nThank you for choosing SKIMA! 🚀",
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
-            
-        elif action == "rej":
-            bot.edit_message_text(
-                f"❌ **ORDER REJECTED!**\n\nOrder ID: `{order_id}`\nUser ID: `{user_id}`\nStatus: Cancelled.",
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode="Markdown"
-            )
-            try:
-                bot.send_message(
-                    user_id,
-                    f"⚠️ **Order Update: REJECTED**\n\nYour Order **{order_id}** could not be processed.\nPossible reasons: Payment issue or Invalid link.\n\nPlease contact Admin via 'Talk with Founder'.",
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
-            
-    except Exception as e:
-        print(f"Error processing order: {e}")
+    action, user_id, order_id = call.data.split("_")
+    status = "APPROVED" if action == "app" else "REJECTED"
+    bot.edit_message_text(f"✅ Order {status} ({order_id})", call.message.chat.id, call.message.message_id)
+    try: bot.send_message(user_id, f"📢 **Order Update:** Your order `{order_id}` is **{status}**.")
+    except: pass
 
-# ================== PAYMENT ==================
 @bot.callback_query_handler(func=lambda call: call.data.startswith("paynow_"))
 def pay_now(call):
     _, data = call.data.split("_", 1)
     platform, service = data.split("|")
-    user = call.from_user
     order_id = generate_order_id()
-    
     try:
         with open(QR_FILE, "rb") as qr:
-            caption = (
-                f"💳 **Payment Request**\n\n"
-                f"🔢 **Order ID:** `{order_id}`\n"
-                f"📦 **Service:** {service} ({platform})\n\n"
-                f"scan the QR code to pay. After paying, send the screenshot here."
-            )
-            bot.send_photo(call.message.chat.id, qr, caption=caption)
-    except:
-        bot.send_message(call.message.chat.id, "❌ QR file not found. Please contact admin.")
-    
-    notify_admin_new_order(user, platform, service, order_id)
+            bot.send_photo(call.message.chat.id, qr, caption=f"💳 Scan to Pay\nOrder ID: `{order_id}`")
+    except: bot.send_message(call.message.chat.id, "❌ QR Error. Contact Admin.")
+    notify_admin(call.from_user, platform, service, order_id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("paylater_"))
 def pay_later(call):
     _, data = call.data.split("_", 1)
     platform, service = data.split("|")
-    user = call.from_user
     order_id = generate_order_id()
+    bot.send_message(call.message.chat.id, f"✅ Order Saved! ID: `{order_id}`")
+    notify_admin(call.from_user, platform, service, order_id)
 
-    bot.send_message(
-        call.message.chat.id, 
-        f"✅ **Request Received!**\n\n"
-        f"🔢 **Your Order ID:** `{order_id}`\n"
-        f"📌 Please save this ID. Admin will contact you soon.", 
-        parse_mode="Markdown"
-    )
-    notify_admin_new_order(user, platform, service, order_id)
-
-def notify_admin_new_order(user, platform, service, order_id):
-    username = user.username
-    username_link = f"@{username}" if username else f"[Click Profile](tg://user?id={user.id})"
-    current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
-    
+def notify_admin(user, platform, service, order_id):
     kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{user.id}_{order_id}"),
-        types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{user.id}_{order_id}")
-    )
-
-    admin_text = (
-        "🚨 *NEW ORDER REQUEST*\n\n"
-        f"🔢 *Order ID:* `{order_id}`\n"
-        f"👤 Name: {user.first_name} {user.last_name or ''}\n"
-        f"🔗 Username: {username_link}\n"
-        f"🆔 User ID: `{user.id}`\n\n"
-        f"📦 Platform: {platform}\n"
-        f"📦 Service: {service}\n\n"
-        f"⏰ Time (IST): {current_time_ist}\n\n"
-        "👇 *Take Action:*"
-    )
-    bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown", reply_markup=kb)
+    kb.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{user.id}_{order_id}"),
+           types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{user.id}_{order_id}"))
+    bot.send_message(ADMIN_ID, f"🚨 *NEW ORDER*\n👤 {user.first_name}\n📦 {service}\n🆔 `{order_id}`", reply_markup=kb)
 
 @bot.message_handler(content_types=['photo', 'document'])
 def payment_screenshot(message):
-    if message.chat.id == ADMIN_ID: return 
-    
-    user = message.from_user
-    username_link = f"@{user.username}" if user.username else f"[Click Profile](tg://user?id={user.id})"
-    admin_text = (
-        "📸 *Payment Screenshot Received*\n\n"
-        f"👤 Name: {user.first_name} {user.last_name or ''}\n"
-        f"🔗 Username: {username_link}\n"
-        f"🆔 User ID: `{message.chat.id}`\n"
-        "💡 Check their Order ID in previous messages and Approve/Reject there."
-    )
-    bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-    bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown")
-    bot.send_message(message.chat.id, "✅ Screenshot received! Admin will verify.", parse_mode="Markdown")
+    if message.chat.id != ADMIN_ID:
+        bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
+        bot.send_message(ADMIN_ID, f"📸 Screenshot from `{message.chat.id}`")
+        bot.reply_to(message, "✅ Payment Screenshot Received!")
 
 # ================== PROJECTS ==================
 @bot.callback_query_handler(func=lambda call: call.data == "projects")
 def projects(call):
     kb = types.InlineKeyboardMarkup(row_width=1)
-    for project, tasks in PROJECT_SERVICES.items():
+    for project in PROJECT_SERVICES:
         kb.add(types.InlineKeyboardButton(project, callback_data=f"proj_{project}"))
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="start"))
     bot.edit_message_text("🛠 *Select a project:*", call.message.chat.id, call.message.message_id, reply_markup=kb)
@@ -399,91 +247,78 @@ def projects(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("proj_"))
 def project_selected(call):
     project = call.data.replace("proj_", "")
-    tasks = PROJECT_SERVICES.get(project, [])
     kb = types.InlineKeyboardMarkup(row_width=1)
-    for task in tasks:
+    for task in PROJECT_SERVICES[project]:
         kb.add(types.InlineKeyboardButton(task, callback_data=f"task_{project}|{task}"))
     kb.add(types.InlineKeyboardButton("🔙 Back", callback_data="projects"))
-    bot.edit_message_text(f"🛠 *{project} Details*:\nSelect task:", call.message.chat.id, call.message.message_id, reply_markup=kb)
+    bot.edit_message_text(f"🛠 *{project}*", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("task_"))
 def task_selected(call):
     data = call.data.replace("task_", "")
     project, task = data.split("|")
-    user = call.from_user
-    current_time_ist = datetime.now(IST).strftime('%d-%m-%Y %I:%M %p')
     order_id = generate_order_id()
-    
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{user.id}_{order_id}"),
-        types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{user.id}_{order_id}")
-    )
-
-    admin_text = (
-        "🛠 *NEW PROJECT REQUEST*\n\n"
-        f"🔢 *Order ID:* `{order_id}`\n"
-        f"👤 User: {user.first_name}\n"
-        f"🆔 User ID: `{user.id}`\n"
-        f"📌 Project: {project}\n"
-        f"📌 Task: {task}\n"
-        f"⏰ Time: {current_time_ist}"
-    )
-    bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown", reply_markup=kb)
-    bot.send_message(call.message.chat.id, f"✅ Request Received!\n\nOrder ID: `{order_id}`\nAdmin will contact you soon.", parse_mode="Markdown")
-
-# ================== ADMIN CHANNEL POSTING ==================
-@bot.message_handler(content_types=['photo', 'video', 'text'])
-def admin_post_to_channel(message):
-    if message.chat.id == ADMIN_ID:
-        if message.text and (message.text.startswith("/reply") or message.text.startswith("/online") or message.text.startswith("/offline")):
-             pass
-        else:
-            caption = message.caption if message.caption else message.text
-            if caption and "/post" in caption:
-                try:
-                    clean_caption = caption.replace("/post", "").strip()
-                    bot.copy_message(CHANNEL_USERNAME, ADMIN_ID, message.message_id, caption=clean_caption, parse_mode="Markdown")
-                    bot.reply_to(message, "✅ Successfully posted to Channel!")
-                except Exception as e:
-                    bot.reply_to(message, f"❌ Failed to post: {e}")
+    bot.send_message(call.message.chat.id, f"✅ Request Sent! ID: `{order_id}`")
+    notify_admin(call.from_user, project, task, order_id)
 
 # ================== CHANNEL WELCOME ==================
 def delete_message_after_delay(chat_id, message_id):
-    try:
-        bot.delete_message(chat_id, message_id)
-    except:
-        pass
+    try: bot.delete_message(chat_id, message_id)
+    except: pass
 
 @bot.chat_member_handler()
 def channel_welcome(message: types.ChatMemberUpdated):
-    new_member = message.new_chat_member
-    if new_member.status in ["member", "administrator", "creator"]:
-        user_name = new_member.user.first_name
-        chat_id = message.chat.id
+    if message.new_chat_member.status in ["member", "administrator", "creator"]:
         kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("🔥 Boost Your Growth Now", url=f"https://t.me/{BOT_USERNAME}?start=welcome"))
-        welcome_text = (
-            f"🌟 *Welcome, {user_name}!* 🌟\n\n"
-            "🚀 *Take Your Brand to the Next Level with Shree Krishna IMA!*\n\n"
-            "👇 *Click below to check our prices & services.*"
-        )
+        kb.add(types.InlineKeyboardButton("🔥 Boost Your Growth", url=f"https://t.me/{BOT_USERNAME}?start=welcome"))
         try:
-            sent_msg = bot.send_message(chat_id, welcome_text, reply_markup=kb, parse_mode="Markdown")
-            threading.Timer(60, delete_message_after_delay, args=[chat_id, sent_msg.message_id]).start()
-        except:
-            pass
+            sent = bot.send_message(message.chat.id, f"🌟 Welcome {message.new_chat_member.user.first_name}!", reply_markup=kb)
+            threading.Timer(60, delete_message_after_delay, args=[message.chat.id, sent.message_id]).start()
+        except: pass
 
-# ================== AI FALLBACK ==================
-@bot.message_handler(func=lambda message: True)
-def default_response(message):
-    if message.chat.id == ADMIN_ID: return
-    text = (
-        "Hello! I can help you with our services and projects.\n\n"
-        "Use /start to get business info."
-    )
-    bot.send_message(message.chat.id, text)
+# ================== ADMIN CHANNEL POSTING (FIXED A-Z) ==================
+@bot.message_handler(content_types=['photo', 'video', 'text'])
+def admin_post_to_channel(message):
+    # 1. Sirf Admin allow karega
+    if message.chat.id != ADMIN_ID:
+        if message.text and not message.text.startswith("/"):
+             bot.send_message(message.chat.id, "Hello! Use /start to begin.")
+        return
+
+    # 2. Check agar ye '/post' command hai
+    msg_content = message.caption if message.caption else message.text
+    
+    # Ignore commands like /online, /reply etc.
+    if message.text and message.text.startswith("/") and not message.text.lower().startswith("/post"):
+        return
+
+    if msg_content and "/post" in msg_content.lower():
+        try:
+            # 3. Clean the text (Remove /post, /Post, /POST)
+            clean_content = re.sub(r'(?i)/post', '', msg_content).strip()
+
+            # 4. Handle TEXT Messages (No Copy Message, Use Send Message)
+            if message.content_type == 'text':
+                if clean_content:
+                    bot.send_message(CHANNEL_USERNAME, clean_content, parse_mode="Markdown")
+                    bot.reply_to(message, "✅ Text successfully posted to Channel!")
+                else:
+                    bot.reply_to(message, "⚠️ Empty message! Write something after /post.")
+
+            # 5. Handle MEDIA Messages (Use Copy Message + New Caption)
+            elif message.content_type in ['photo', 'video']:
+                bot.copy_message(
+                    chat_id=CHANNEL_USERNAME,
+                    from_chat_id=message.chat.id,
+                    message_id=message.message_id,
+                    caption=clean_content,
+                    parse_mode="Markdown"
+                )
+                bot.reply_to(message, "✅ Media successfully posted to Channel!")
+
+        except Exception as e:
+            bot.reply_to(message, f"❌ Failed to post: {e}")
 
 # ================== RUN BOT ==================
-print("🤖 SKIMA_Helper_bot is running with Smart Alert System...")
+print("🤖 SKIMA Bot is running...")
 bot.infinity_polling(allowed_updates=['message', 'callback_query', 'chat_member'])
